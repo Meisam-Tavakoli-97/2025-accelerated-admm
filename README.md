@@ -1,3 +1,11 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Meisam%20Tavakoli-0A66C2?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/meisam-tavakoli)
+[![GitHub](https://img.shields.io/badge/GitHub-Meisam--Tavakoli--97-181717?style=flat&logo=github&logoColor=white)](https://github.com/Meisam-Tavakoli-97)
+[![Google Scholar](https://img.shields.io/badge/Google%20Scholar-4285F4?style=flat&logo=google-scholar&logoColor=white)](https://scholar.google.com/citations?user=aAzQLBoAAAAJ&hl=en)
+
+
+
+
 # Accelerated ADMM: Automated Parameter Tuning and Improved Linear Convergence
 
 This repository contains the code from our paper
