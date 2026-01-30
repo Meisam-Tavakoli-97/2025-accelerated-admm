@@ -2,6 +2,7 @@ import numpy as np
 import control as ctrl
 from scipy.linalg import block_diag
 
+
 def build_appended_system(plant, unique_filter):
     """
     Constructs an appended system in ctrl.ss form using the plant and unique filter.
@@ -84,8 +85,6 @@ def build_appended_system(plant, unique_filter):
  
     appended_system = ctrl.ss(A_new, B_new, C_new, D_new)
     return appended_system
-
-
 
 
 def combine_filters_different_nonlinearities(num_filters, *filters):
