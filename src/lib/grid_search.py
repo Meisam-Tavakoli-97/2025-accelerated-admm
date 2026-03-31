@@ -4,7 +4,16 @@ import json
 from lib.convergence_analysis import compute_rho_for_acc_admm
  
 
-def choose_adaptive_intervals(kappa: float, n_points: int = 20):
+
+
+def choose_adaptive_intervals(
+    kappa: float,
+    n_points: int = 50,
+    center=None,
+    span=None,
+    iteration: int = 6,
+    shrink_factor: float = 0.5,
+):
     """
     Automatically generate adaptive grids for v1 and v2 centered around
     the theoretical (v1, v2) values for a given κ and algorithm.
