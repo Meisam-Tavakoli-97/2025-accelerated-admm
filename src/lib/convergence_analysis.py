@@ -20,6 +20,7 @@ def compute_rho_for_acc_admm(m, L, n_ZF, algo, v1=None, v2=None, rho_max=1.3, ep
     Returns:
         float: Worst-case convergence rate (rho_ADMM).
     """
+    
     rho_min = 0
     rho_tol = 1e-3
     kappa = L / m
