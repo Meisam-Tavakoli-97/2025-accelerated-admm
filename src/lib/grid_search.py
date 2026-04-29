@@ -5,84 +5,71 @@ from lib.convergence_analysis import compute_rho_for_acc_admm
  
 
 
-
 def choose_adaptive_intervals(
     kappa: float,
-    n_points: int = 50,
+    n_points: int = 100,
     center=None,
     span=None,
-    iteration: int = 6,
+    iteration: int = 0,
     shrink_factor: float = 0.5,
 ):
     """
-    Automatically generate adaptive grids for v1 and v2 centered around
-    the theoretical (v1, v2) values for a given κ and algorithm.
-    Intervals expand logarithmically with κ and never collapse to zero.
+    Adaptive grid search intervals.
+
+    Iteration 0:
+        v1 in [0, 5]
+        v2 in [0, 2]
+
+    Later iterations:
+        use the best point from the previous iteration and the previous
+        interval upper bounds to shrink the search region toward 0.
     """
-    L = kappa
 
-    # --- Compute theoretical centers with TM parameters ---
-    gamma = 1 - 1 / np.sqrt(kappa)
-    v1_center = (1 + gamma) / L
-    v2_center = (gamma ** 2) / (2 - gamma)
+    if center is None or span is None or iteration == 0:
+        v1_min, v1_max = 0, 5
+        v2_min, v2_max = 0, 2
+    else:
+        best_v1, best_v2 = center
+        prev_v1_max, prev_v2_max = span
 
-    # --- Log-scaling of interval spread with kappa ---
-    spread_scale = np.log10(kappa + 1) / np.log10(10000 + 1)  # ∈ [0, 1]
-    rel_spread_v1 = 0.05 + 0.2 * spread_scale   # ~5–30%
+        
+        r1 = best_v1 / prev_v1_max if prev_v1_max > 0 else 0.0
+        r2 = best_v2 / prev_v2_max if prev_v2_max > 0 else 0.0
 
-    # Minimum width to avoid zero grid near center 0
-    min_width_v1 = 1e-3 / L
+        
+        frac1 = max(0.3, min(0.8, r1 ** shrink_factor))
+        frac2 = max(0.3, min(0.8, r2 ** shrink_factor))
 
-    # Compute span values
-    v1_span = max(v1_center * rel_spread_v1, min_width_v1 / 2)
-    v2_span = 0.2
+        v1_min = 0.0
+        v2_min = 0.0
+        v1_max = prev_v1_max * frac1
+        v2_max = prev_v2_max * frac2
 
-    v2_min = max(0.0, v2_center - v2_span)
-    v2_max = min(1.0, v2_center + v2_span)
-
-    v1_min = max(0.0, (v1_center - v1_span))
-    v1_max = v1_center + 0.2*v1_span
-
-    # --- Build grids ---
     v1_grid = np.linspace(v1_min, v1_max, n_points)
-    v1_target = v1_center
-    v1_grid = np.unique(np.append(v1_grid, v1_target))
     v2_grid = np.linspace(v2_min, v2_max, n_points)
-
-    ### Note:
-    # For these two values of kappa, we need higher resolution to obtain good results
-    if kappa == 100:
-        v2_grid = np.linspace(0.695, 0.715, 40)
-        v2_target = v2_center
-        v2_grid = np.unique(np.append(v2_grid, v2_target))
-
-    if kappa == 1000:
-        v2_grid = np.linspace(0.76, 0.8, 40)
-        v2_grid = np.linspace(v2_min, v2_max, n_points)
-        v2_target = v2_center
-        v2_grid = np.unique(np.append(v2_grid, v2_target))
+    
 
     return v1_grid, v2_grid
 
 
-def run_grid_search(kappa, *, threshold, n_ZF, algo, alpha, n_points, json_filename):
+def run_grid_search(kappa, *, threshold, n_ZF, algo, alpha, n_points, json_filename, key):
     """
     If kappa is a float → evaluate one κ.
     If kappa is a list/array → evaluate all κ values in a loop.
     Save all results into `json_filename`.
     """
 
-    # CASE 1: kappa is a list/array so we do a loop here
+    
     if not isinstance(kappa, (int, float)):   # list, array, iterable
         all_results = {}
 
         for k in kappa:
             r = run_grid_search(float(k), threshold=threshold, n_ZF=n_ZF, algo=algo, alpha=alpha,
-                n_points=n_points, json_filename=json_filename)
+                n_points=n_points, json_filename=json_filename, key=key)
             all_results[str(k)] = r
         return all_results
 
-    # CASE 2: kappa is a single float, then we just do the original logic
+    
     kappa = float(kappa)
 
     def _resolve(th, k):
@@ -93,32 +80,71 @@ def run_grid_search(kappa, *, threshold, n_ZF, algo, alpha, n_points, json_filen
         return float(th)
 
     L = kappa
-    v1_values, v2_values = choose_adaptive_intervals(kappa, n_points)
-    cutoff = _resolve(threshold, kappa)
-
-    best_v1 = []
-    best_v2 = []
+    best_v1 = None
+    best_v2 = None
     best_rate = float("inf")
 
-    for v1 in v1_values:
-        for v2 in v2_values:
-            try:
-                rate = compute_rho_for_acc_admm(1, L, n_ZF, algo=algo, v1=v1, v2=v2, rho_max=1.3,
-                    eps=1e-6, alpha=alpha)
-            except Exception:
-                continue
+    max_iter = 6       # number of zoom steps
+    tol = 1e-7         
 
-            if rate <= cutoff:
-                print(f"κ={kappa:.3g} | v1={v1:.5f} v2={v2:.5f} | rate={rate:.5f} <= cutoff={cutoff:.5f}")
-                if rate < best_rate:
-                    print(f"New BEST: rate={rate:.6f}, v1={v1:.6f}, v2={v2:.6f}")
-                    best_rate = rate
-                    best_v1 = [float(v1)]
-                    best_v2 = [float(v2)]
-                elif rate == best_rate:
-                    print(f"Equal BEST: v1={v1:.6f}, v2={v2:.6f}")
-                    best_v1.append(float(v1))
-                    best_v2.append(float(v2))
+    span = None        
+
+    for it in range(max_iter):
+
+        # generate adaptive grid using the best point from the previous iteration
+        v1_values, v2_values = choose_adaptive_intervals(
+            kappa,
+            n_points=n_points,
+            center=(best_v1, best_v2) if best_v1 is not None and best_v2 is not None else None,
+            span=span,
+            iteration=it,
+        )
+
+        cutoff = _resolve(threshold, kappa)
+        prev_best = best_rate
+
+        current_best_rate = best_rate
+        current_best_v1 = best_v1
+        current_best_v2 = best_v2
+
+        for v1 in v1_values:
+            for v2 in v2_values:
+                try:
+                    rate = compute_rho_for_acc_admm(
+                        1, L, n_ZF,
+                        algo=algo,
+                        v1=v1,
+                        v2=v2,
+                        rho_max=1.3,
+                        eps=1e-6,
+                        alpha=alpha
+                    )
+                except Exception:
+                    continue
+
+                if rate <= cutoff:
+                    print(f"[Iter {it}] κ={kappa:.3g} | v1={v1:.5f} v2={v2:.5f} | rate={rate:.5f}")
+
+                    if rate < current_best_rate:
+                        current_best_rate = rate
+                        current_best_v1 = float(v1)
+                        current_best_v2 = float(v2)
+
+        # update global best after finishing this iteration
+        best_rate = current_best_rate
+        best_v1 = current_best_v1
+        best_v2 = current_best_v2
+
+        print(f"--> Iter {it} BEST: rate={best_rate:.6f}, v1={best_v1}, v2={best_v2}")
+
+        # save current interval upper bounds for the next iteration
+        span = (float(v1_values[-1]), float(v2_values[-1]))
+
+        # stopping condition
+        if abs(prev_best - best_rate) < tol:
+            print(f"Converged at iteration {it}")
+            break
+
 
     def _unique(lst):
         out, seen = [], set()
@@ -128,11 +154,12 @@ def run_grid_search(kappa, *, threshold, n_ZF, algo, alpha, n_points, json_filen
                 out.append(x)
         return out
 
+    
     result = {
-        "kappa": kappa,
-        "best_rate": best_rate,
-        "v1": _unique(best_v1),
-        "v2": _unique(best_v2),
+    "kappa": kappa,
+    "best_rate": best_rate,
+    "v1": float(best_v1) if best_v1 is not None else None,
+    "v2": float(best_v2) if best_v2 is not None else None,
     }
 
     ### save jason ###
@@ -145,8 +172,8 @@ def run_grid_search(kappa, *, threshold, n_ZF, algo, alpha, n_points, json_filen
         except json.JSONDecodeError:
             data = {}
 
-    data[str(kappa)] = result
-
+    data[key] = {}
+    data[key][str(float(kappa))] = result
     with open(json_filename, "w") as f:
         json.dump(data, f, indent=4)
 
@@ -155,42 +182,27 @@ def run_grid_search(kappa, *, threshold, n_ZF, algo, alpha, n_points, json_filen
     return result
 
 
-def extract_data(data):
-  
-    grid_kappa = []
-    grid_rate = []
-    grid_v1 = []
-    grid_v2 = []
+def load_results(key, json_filename="results.json"):
+    if not os.path.exists(json_filename):
+        raise FileNotFoundError(f"File '{json_filename}' does not exist.")
 
-    G_kappa = []
-    G_rate = []
+    with open(json_filename, "r") as f:
+        data = json.load(f)
 
-    for key, entry in data.items():
+    if key not in data:
+        raise KeyError(f"Key '{key}' not found in '{json_filename}'.")
 
-        if key == "G_results":
-            for k, v in entry.items():
-                kappa_val = float(k)  
-                G_kappa.append(kappa_val)
-                G_rate.append(v["G_rate"])
-  
-            continue
+    dataset = data[key]
 
-        try:
-            _ = float(key)   
-        except ValueError:
-            continue
+    kappa_values = []
+    rate_values = []
+    v1_values = []
+    v2_values = []
 
-        grid_kappa.append(entry["kappa"])
-        grid_rate.append(entry["rate"][0])
-        grid_v1.append(entry["v1"][0])
-        grid_v2.append(entry["v2"][0])
+    for _, result in dataset.items():
+        kappa_values.append(result["kappa"])
+        rate_values.append(result["best_rate"])
+        v1_values.append(result["v1"])
+        v2_values.append(result["v2"])
 
-    def sort_by_kappa(k, *others):
-        idx = sorted(range(len(k)), key=lambda i: k[i])
-        return ([k[i] for i in idx],) + tuple([ [arr[i] for i in idx] for arr in others ])
-
-    grid_sorted = sort_by_kappa(grid_kappa, grid_rate, grid_v1, grid_v2)
-    G_sorted    = sort_by_kappa(G_kappa,    G_rate)
-
-    return grid_sorted + G_sorted
-
+    return kappa_values, rate_values, v1_values, v2_values
