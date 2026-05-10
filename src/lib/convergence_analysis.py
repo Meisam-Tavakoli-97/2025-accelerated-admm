@@ -47,12 +47,6 @@ def compute_rho_for_acc_admm(m, L, n_ZF, algo, v1=None, v2=None, rho_max=1.3, ep
         v2 = 1*(gamma**2)/(2-gamma)
         alpha = 1
 
-    elif algo=='A-ADMM (TM, λ-damped)':
-        gamma = 1-(1/np.sqrt(kappa))
-        v1 = (1+gamma)/L 
-        v2 = 1*(gamma**2)/(2-gamma)
-        damp = 0.1
-        alpha = 1
 
     elif algo == 'A-ADMM (GS)':
         if v1 is None or v2 is None:
@@ -72,26 +66,14 @@ def compute_rho_for_acc_admm(m, L, n_ZF, algo, v1=None, v2=None, rho_max=1.3, ep
 
         rho = (rho_min + rho_max) / 2
 
-
-        if algo=='A-ADMM (TM, λ-damped)':
-            A_hat = np.array([[0, 0, 1, 0], 
-                              [0, 0, 0, 1], 
-                              [0, 0, damp, 0],
-                              [-v2*(alpha-1), -v2, (alpha-1)*(1+v2), 1+v2]])
-            B_hat = np.array([[0, 0],
-                              [0, 0],
-                              [0, -v1*damp],
-                              [alpha*v1, -v1]])
-            
-        else:
-            A_hat = np.array([[0, 0, 1, 0], 
-                              [0, 0, 0, 1], 
-                              [0, 0, 0, 0],
-                              [-v2*(alpha-1), -v2, (alpha-1)*(1+v2), 1+v2]])
-            B_hat = np.array([[0, 0],
-                              [0, 0],
-                              [0, -v1],
-                              [alpha*v1, -v1]])
+        A_hat = np.array([[0, 0, 1, 0], 
+                            [0, 0, 0, 1], 
+                            [0, 0, 0, 0],
+                            [-v2*(alpha-1), -v2, (alpha-1)*(1+v2), 1+v2]])
+        B_hat = np.array([[0, 0],
+                            [0, 0],
+                            [0, -v1],
+                            [alpha*v1, -v1]])
             
         C_hat = np.array([[v2,             v2,          -(1+v2), -(1+v2)],
                           [-v2*(alpha-1), -v2, (alpha-1)*(1+v2),    1+v2]])
